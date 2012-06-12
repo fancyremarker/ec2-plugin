@@ -31,6 +31,7 @@ import org.kohsuke.stapler.QueryParameter;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.services.ec2.AmazonEC2;
+import com.amazonaws.services.ec2.model.CreateTagsRequest;
 import com.amazonaws.services.ec2.model.DescribeImagesRequest;
 import com.amazonaws.services.ec2.model.DescribeInstancesRequest;
 import com.amazonaws.services.ec2.model.Image;
@@ -39,6 +40,7 @@ import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.KeyPair;
 import com.amazonaws.services.ec2.model.Placement;
 import com.amazonaws.services.ec2.model.RunInstancesRequest;
+import com.amazonaws.services.ec2.model.Tag;
 
 /**
  * Template of {@link EC2Slave} to launch.
@@ -48,6 +50,7 @@ import com.amazonaws.services.ec2.model.RunInstancesRequest;
 public class SlaveTemplate implements Describable<SlaveTemplate> {
     public final String ami;
     public final String description;
+    public final String name;
     public final String zone;
     public final String securityGroups;
     public final String remoteFS;
@@ -68,7 +71,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 	private transient /*almost final*/ Set<String> securityGroupSet;
 
     @DataBoundConstructor
-    public SlaveTemplate(String ami, String zone, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, String description, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate) {
+    public SlaveTemplate(String ami, String zone, String securityGroups, String remoteFS, String sshPort, InstanceType type, String labelString, String description, String name, String initScript, String userData, String numExecutors, String remoteAdmin, String rootCommandPrefix, String jvmopts, boolean stopOnTerminate) {
         this.ami = ami;
         this.zone = zone;
         this.securityGroups = securityGroups;
@@ -77,6 +80,7 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         this.type = type;
         this.labels = Util.fixNull(labelString);
         this.description = description;
+        this.name = name;
         this.initScript = initScript;
         this.userData = userData;
         this.numExecutors = Util.fixNull(numExecutors).trim();
@@ -101,6 +105,10 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
 
     String getZone() {
         return zone;
+    }
+
+    public String getName() {
+        return name;
     }
 
     public String getSecurityGroupString() {
@@ -180,10 +188,22 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
             request.setInstanceType(type.toString());
             request.setSecurityGroups(securityGroupSet);
             Instance inst = ec2.runInstances(request).getReservation().getInstances().get(0);
+            nameSlave(inst, name, listener);
             return newSlave(inst);
         } catch (FormException e) {
             throw new AssertionError(); // we should have discovered all configuration issues upfront
         }
+    }
+
+    private void nameSlave(Instance inst, String name, TaskListener listener) {
+        PrintStream logger = listener.getLogger();
+        AmazonEC2 ec2 = getParent().connect();
+
+        CreateTagsRequest request = new CreateTagsRequest();
+        Tag tag = new Tag("Name", name);
+        request.setTags(Collections.singleton(tag));
+        request.setResources(Collections.singleton(inst.getInstanceId()));
+        ec2.createTags(request);
     }
 
     private EC2Slave newSlave(Instance inst) throws FormException, IOException {

@@ -44,10 +44,10 @@ import com.amazonaws.services.ec2.model.InstanceType;
 import com.amazonaws.services.ec2.model.KeyPair;
 import com.amazonaws.services.ec2.model.KeyPairInfo;
 import com.amazonaws.services.ec2.model.Reservation;
+import com.amazonaws.services.ec2.model.Tag;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.GeneratePresignedUrlRequest;
-
 
 /**
  * Hudson's view of EC2. 
@@ -156,9 +156,17 @@ public abstract class EC2Cloud extends Cloud {
         int n=0;
         for (Reservation r : connect().describeInstances().getReservations()) {
             for (Instance i : r.getInstances()) {
-                InstanceStateName stateName = InstanceStateName.fromValue(i.getState().getName());
-                if (stateName == InstanceStateName.Pending || stateName == InstanceStateName.Running)
-                    n++;
+                for (Tag t : i.getTags()) {
+                    List<String> names = new ArrayList<String>();
+                    for (SlaveTemplate st : templates) {
+                        names.add(st.getName());
+                    }
+                    if (t.getKey().equals("Name") && names.contains(t.getValue())) {
+                        InstanceStateName stateName = InstanceStateName.fromValue(i.getState().getName());
+                        if (stateName == InstanceStateName.Pending || stateName == InstanceStateName.Running)
+                            n++;
+                    }
+                }
             }
         }
         return n;
