@@ -66,6 +66,8 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
     public final boolean stopOnTerminate;
     protected transient EC2Cloud parent;
     
+    private final int AWS_POLL_INTERVAL = 30;
+    private final int AWS_MAX_ATTEMPTS = 3;
 
     private transient /*almost final*/ Set<LabelAtom> labelSet;
 	private transient /*almost final*/ Set<String> securityGroupSet;
@@ -203,7 +205,19 @@ public class SlaveTemplate implements Describable<SlaveTemplate> {
         Tag tag = new Tag("Name", name);
         request.setTags(Collections.singleton(tag));
         request.setResources(Collections.singleton(inst.getInstanceId()));
-        ec2.createTags(request);
+        for (int i = 0; i < AWS_MAX_ATTEMPTS; i++) {
+            try {
+                ec2.createTags(request);
+                return;
+            } catch (Exception e1) {
+                e1.printStackTrace(listener.error(e1.getMessage()));
+                try {
+                    Thread.sleep(AWS_POLL_INTERVAL);
+                } catch (InterruptedException e2) {
+                    e2.printStackTrace(listener.error(e2.getMessage()));
+                }
+            }
+        }
     }
 
     private EC2Slave newSlave(Instance inst) throws FormException, IOException {
